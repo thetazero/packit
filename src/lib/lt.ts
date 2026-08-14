@@ -8,7 +8,7 @@ export class LTEncoder {
   private readonly blocks: Uint8Array[];
   private readonly cdf: Float64Array;
 
-  constructor(data: Uint8Array, blockSize: number) {
+  constructor(data: Uint8Array, blockSize: number, cdf?: Float64Array) {
     this.fileSize = data.length;
     this.blockSize = blockSize;
     this.k = Math.max(1, Math.ceil(data.length / blockSize));
@@ -18,7 +18,7 @@ export class LTEncoder {
       block.set(data.subarray(i * blockSize, (i + 1) * blockSize));
       this.blocks.push(block);
     }
-    this.cdf = robustSolitonCDF(this.k);
+    this.cdf = cdf ?? robustSolitonCDF(this.k);
   }
 
   /** XOR of the source blocks selected by this seed. */
@@ -51,12 +51,12 @@ export class LTDecoder {
   private pending: PendingPacket[] = [];
   private readonly seenSeeds = new Set<number>();
 
-  constructor(k: number, blockSize: number, fileSize: number) {
+  constructor(k: number, blockSize: number, fileSize: number, cdf?: Float64Array) {
     this.k = k;
     this.blockSize = blockSize;
     this.fileSize = fileSize;
     this.blocks = new Array(k).fill(null);
-    this.cdf = robustSolitonCDF(k);
+    this.cdf = cdf ?? robustSolitonCDF(k);
   }
 
   get done(): boolean {

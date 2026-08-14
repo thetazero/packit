@@ -17,6 +17,7 @@ Typical throughput: block size × frame rate × ~0.85 decode efficiency — arou
 npm install
 npm run dev     # HTTPS dev server (self-signed) so phones on the LAN can use the camera
 npm test        # fountain code / packet format unit tests
+npm run sim     # camera-in-the-loop simulator: compare bandwidth strategies (see src/sim/README.md)
 npm run build   # type-check + production build to dist/
 npm run icons   # regenerate PWA icons (no image deps — hand-rolled PNG writer)
 ```
