@@ -115,20 +115,27 @@ export function initReceiver(root: HTMLElement): void {
   function updateProgress(): void {
     if (!state) return;
     const d = state.decoder;
-    const pct = Math.floor((d.solvedCount / d.k) * 100);
+    // LT decoding avalanches: almost no blocks solve until ~k packets have
+    // arrived, then everything cascades. Packet collection is the honest,
+    // linear progress signal; solved blocks would read ~0% until the cliff.
+    const estNeeded = Math.ceil(d.k * 1.12) + 2;
+    const collected = d.packetsUsed;
+    const pct = d.done ? 100 : Math.min(99, Math.floor((collected / estNeeded) * 100));
     progressBar.style.width = `${pct}%`;
     const elapsed = (performance.now() - state.startedAt) / 1000;
-    // Goodput: solved source data per second since the first packet arrived.
-    const solvedBytes = Math.min(d.solvedCount * d.blockSize, d.fileSize);
-    const bandwidth = elapsed > 0.5 ? solvedBytes / elapsed : 0;
-    const remaining = d.fileSize - solvedBytes;
-    const eta = bandwidth > 0 ? remaining / bandwidth : Infinity;
-    stats.textContent =
-      `${d.solvedCount}/${d.k} blocks (${pct}%) of ${formatBytes(d.fileSize)} · ` +
-      `${bandwidth > 0 ? formatBytes(Math.round(bandwidth)) : "—"}/s · ` +
-      `${Number.isFinite(eta) ? `~${Math.ceil(eta)}s left` : "estimating…"} · ` +
-      `${d.packetsUsed} packets, ${d.duplicates} dupes` +
-      (state.meta ? ` · ${state.meta.name}` : " · waiting for metadata…");
+    // Incoming rate over the wire: unique packets × payload per second.
+    const bandwidth = elapsed > 0.5 ? (collected * d.blockSize) / elapsed : 0;
+    const eta =
+      bandwidth > 0 ? (Math.max(1, estNeeded - collected) * d.blockSize) / bandwidth : Infinity;
+    const decodedPct = Math.floor((d.solvedCount / d.k) * 100);
+    stats.textContent = d.done
+      ? `decoded ${formatBytes(d.fileSize)} — waiting for metadata frame…`
+      : `${collected}/${estNeeded} packets (${pct}%) for ${formatBytes(d.fileSize)} · ` +
+        `${bandwidth > 0 ? formatBytes(Math.round(bandwidth)) : "—"}/s · ` +
+        `${Number.isFinite(eta) && eta >= 0 ? `~${Math.max(1, Math.ceil(eta))}s left` : "estimating…"} · ` +
+        `${decodedPct}% decoded (cascades near the end) · ` +
+        `${d.duplicates} rescans` +
+        (state.meta ? ` · ${state.meta.name}` : "");
   }
 
   function finish(): void {
