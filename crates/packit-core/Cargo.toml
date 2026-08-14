@@ -1,0 +1,18 @@
+[package]
+name = "packit-core"
+version = "0.3.0"
+edition = "2021"
+license = "MIT"
+description = "Tile-mode optical codec, Reed-Solomon layer, and RaptorQ fountain for packit"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+raptorq = "2"
+reed-solomon = "0.2"
+
+[package.metadata.wasm-pack.profile.release]
+# Skip the binaryen download in CI; LTO already trims the binary.
+wasm-opt = false

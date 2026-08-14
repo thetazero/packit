@@ -1,20 +1,23 @@
 {
   "name": "fountain-transfer",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run build:wasm && tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "icons": "node scripts/gen-icons.mjs"
+    "icons": "node scripts/gen-icons.mjs",
+    "build:wasm": "wasm-pack build crates/packit-core --target web --release --out-dir ../../src/wasm/pkg",
+    "predev": "npm run build:wasm"
   },
   "dependencies": {
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
+    "@types/node": "^26.2.0",
     "@types/qrcode": "^1.5.5",
     "@vitejs/plugin-basic-ssl": "^1.2.0",
     "typescript": "^5.6.3",

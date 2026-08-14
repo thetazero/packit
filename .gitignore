@@ -4,3 +4,6 @@ dev-dist/
 *.local
 .vite/
 .claude/
+
+target/
+src/wasm/pkg/

@@ -23,7 +23,17 @@ npm run icons   # regenerate PWA icons (no image deps — hand-rolled PNG writer
 
 Camera access requires a secure context: use the HTTPS dev server, `localhost`, or the deployed Pages site.
 
-## Roadmap
+## Tile mode
 
-- Audio transport (the packet layer is transport-agnostic — an audio modem can slot in beside QR)
-- Multi-QR grids per frame for higher throughput
+The default transport is a custom high-density optical code — a 128×128 grid
+of 8×8-pixel glyph tiles (16 shapes × 4 colors = 6 bits/tile), with corner
+bullseye anchors, an alignment-dot lattice, interleaved RS(155,125) error
+correction, and a RaptorQ (RFC 6330) fountain — carrying **~9.6 KB per frame**
+vs QR's 256 bytes. The codec is a Rust crate (`crates/packit-core`) compiled
+to WebAssembly and shared by sender and receiver; design and rationale live in
+[docs/tile-mode-spec.md](docs/tile-mode-spec.md). It is cimbar-inspired but
+not wire-compatible. QR mode remains the compatibility fallback and the
+receiver auto-detects which transport it is looking at.
+
+Tile mode needs the code to span ≳820 pixels in the camera frame (2×2-px
+glyph blocks fall below Nyquist under ~0.8× scale) — hold the phone close.
