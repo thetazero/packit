@@ -1,0 +1,45 @@
+import { defineConfig } from "vite";
+import { VitePWA } from "vite-plugin-pwa";
+import basicSsl from "@vitejs/plugin-basic-ssl";
+
+export default defineConfig({
+  // Served from https://thetazero.github.io/packit/
+  base: "/packit/",
+  server: {
+    host: true,
+  },
+  plugins: [
+    // Self-signed HTTPS in dev so phones on the LAN can use the camera
+    // (getUserMedia requires a secure context).
+    basicSsl(),
+    VitePWA({
+      registerType: "autoUpdate",
+      includeAssets: ["icons/icon-192.png", "icons/icon-512.png"],
+      manifest: {
+        name: "Fountain Transfer",
+        short_name: "Fountain",
+        description:
+          "Air-gapped file transfer between machines via camera and QR codes, powered by fountain codes.",
+        theme_color: "#0b1020",
+        background_color: "#0b1020",
+        display: "standalone",
+        start_url: "/packit/",
+        scope: "/packit/",
+        icons: [
+          { src: "icons/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "icons/icon-512.png", sizes: "512x512", type: "image/png" },
+          {
+            src: "icons/icon-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
+          },
+        ],
+      },
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,png,svg,webmanifest}"],
+        navigateFallback: "index.html",
+      },
+    }),
+  ],
+});

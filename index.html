@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b1020" />
+    <title>Fountain Transfer</title>
+    <link rel="icon" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  </head>
+  <body>
+    <header>
+      <h1>Fountain Transfer</h1>
+      <p class="tagline">Move files between machines with nothing but a screen and a camera.</p>
+      <nav class="tabs">
+        <button id="tab-send" class="tab active">Send</button>
+        <button id="tab-receive" class="tab">Receive</button>
+      </nav>
+    </header>
+    <main>
+      <section id="send-view"></section>
+      <section id="receive-view" class="hidden"></section>
+    </main>
+    <footer>
+      <p>
+        LT fountain codes over QR — the receiver can miss any frames and still
+        reconstruct the file. Works fully offline once installed.
+      </p>
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
