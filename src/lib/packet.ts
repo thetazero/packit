@@ -42,7 +42,7 @@ export interface MetaPacket {
 
 export type Packet = DataPacket | MetaPacket;
 
-export function serializeDataPacket(p: Omit<DataPacket, "type">): string {
+export function serializeDataPacketBytes(p: Omit<DataPacket, "type">): Uint8Array {
   const buf = new Uint8Array(DATA_HEADER + p.payload.length);
   const view = new DataView(buf.buffer);
   view.setUint8(0, DATA_MAGIC);
@@ -52,10 +52,14 @@ export function serializeDataPacket(p: Omit<DataPacket, "type">): string {
   view.setUint32(9, p.fileSize, true);
   view.setUint32(13, p.seed, true);
   buf.set(p.payload, DATA_HEADER);
-  return base45Encode(buf);
+  return buf;
 }
 
-export function serializeMetaPacket(p: Omit<MetaPacket, "type">): string {
+export function serializeDataPacket(p: Omit<DataPacket, "type">): string {
+  return base45Encode(serializeDataPacketBytes(p));
+}
+
+export function serializeMetaPacketBytes(p: Omit<MetaPacket, "type">): Uint8Array {
   const enc = new TextEncoder();
   const name = enc.encode(p.name).slice(0, 255);
   const mime = enc.encode(p.mime).slice(0, 255);
@@ -73,16 +77,22 @@ export function serializeMetaPacket(p: Omit<MetaPacket, "type">): string {
   o += name.length;
   buf[o++] = mime.length;
   buf.set(mime, o);
-  return base45Encode(buf);
+  return buf;
+}
+
+export function serializeMetaPacket(p: Omit<MetaPacket, "type">): string {
+  return base45Encode(serializeMetaPacketBytes(p));
 }
 
 export function parsePacket(text: string): Packet | null {
-  let buf: Uint8Array;
   try {
-    buf = base45Decode(text);
+    return parsePacketBytes(base45Decode(text));
   } catch {
     return null;
   }
+}
+
+export function parsePacketBytes(buf: Uint8Array): Packet | null {
   if (buf.length < DATA_HEADER) return null;
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   const magic = view.getUint8(0);
