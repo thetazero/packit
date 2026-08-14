@@ -5,6 +5,8 @@ import { registerSW } from "virtual:pwa-register";
 
 registerSW({ immediate: true });
 
+document.querySelector<HTMLElement>("#version")!.textContent = __APP_VERSION__;
+
 const sendView = document.querySelector<HTMLElement>("#send-view")!;
 const receiveView = document.querySelector<HTMLElement>("#receive-view")!;
 const tabSend = document.querySelector<HTMLButtonElement>("#tab-send")!;

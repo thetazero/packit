@@ -1,8 +1,24 @@
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import basicSsl from "@vitejs/plugin-basic-ssl";
+import { execSync } from "node:child_process";
+import { version } from "./package.json";
+
+function buildVersion(): string {
+  let hash = "dev";
+  try {
+    hash = execSync("git rev-parse --short HEAD").toString().trim();
+  } catch {
+    // not a git checkout (e.g. tarball build) — keep "dev"
+  }
+  const date = new Date().toISOString().slice(0, 10);
+  return `v${version} · ${hash} · ${date}`;
+}
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(buildVersion()),
+  },
   // Served from https://thetazero.github.io/packit/
   base: "/packit/",
   server: {

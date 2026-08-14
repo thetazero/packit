@@ -40,6 +40,19 @@ h1 {
   color: transparent;
 }
 
+.version {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: normal;
+  color: var(--muted);
+  background: var(--panel);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+  -webkit-text-fill-color: var(--muted);
+}
+
 .tagline {
   color: var(--muted);
   font-size: 0.9rem;
