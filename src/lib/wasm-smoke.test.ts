@@ -9,7 +9,7 @@ describe.skipIf(!built)("packit-core wasm", () => {
   it("loads and reports its version", async () => {
     const mod = await import(/* @vite-ignore */ pkgDir + "packit_core.js");
     await mod.default({ module_or_path: readFileSync(pkgDir + "packit_core_bg.wasm") });
-    expect(mod.version()).toBe("0.3.0");
+    expect(mod.version()).toBe("0.4.0");
     expect(mod.frame_capacity()).toBe(9632);
   });
 
