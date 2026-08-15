@@ -154,6 +154,8 @@ input[type="range"] {
   border-radius: 8px;
   image-rendering: pixelated;
   background: #fff;
+  max-width: 100%;
+  height: auto;
 }
 
 video {

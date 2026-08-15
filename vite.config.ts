@@ -53,7 +53,9 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,png,svg,webmanifest}"],
+        globPatterns: ["**/*.{js,css,html,png,svg,wasm,webmanifest}"],
+        // The wasm codec pushes the bundle past workbox's 2 MiB default.
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         navigateFallback: "index.html",
       },
     }),

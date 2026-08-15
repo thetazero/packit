@@ -23,7 +23,10 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - run: rustup target add wasm32-unknown-unknown
+      - run: cargo test --workspace
       - run: npm ci
+      - run: npm run build:wasm
       - run: npm test
       - run: npm run build
       - uses: actions/upload-pages-artifact@v5
