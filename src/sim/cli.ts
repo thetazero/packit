@@ -1,36 +1,38 @@
 /**
- * Strategy-comparison harness. Run with:
+ * Bandwidth-validation harness for the tile codec. Run with:
  *
- *   npm run sim                                    # defaults: 8 KB, 3 trials, handheld
+ *   npm run sim                                    # 64 KB, 3 trials, lossless + handheld
  *   npm run sim -- --scenarios steady,handheld,lowlight --trials 5
- *   npm run sim -- --size 16384 --seed 7
- *   npm run sim -- --dump /tmp/captures            # save synthesized camera frames as PGM
+ *   npm run sim -- --size 262144 --seed 7 --fps 8,15,30
+ *   npm run sim -- --dump /tmp/captures            # save synthesized camera frames as PPM
  *
- * Every scan attempt rasterizes real QR frames, pushes them through the
- * camera model, and runs jsQR — so runs take real CPU time. Scale --size /
- * --trials with patience.
+ * Every scan attempt renders real sender frames, pushes them through the
+ * camera model, and runs the production wasm decoder — so runs take real CPU
+ * time. Scale --size / --trials with patience.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SCENARIOS, type Capture } from "./camera";
-import { defaultStrategies } from "./strategy";
-import { makeTestFile, runTrials, simulateTransfer, type TrialSummary } from "./simulate";
+import { loadCore } from "./core";
+import { makeTestFile, runTrials, simulateTransfer, type SenderConfig, type TrialSummary } from "./simulate";
 
 interface Args {
   size: number;
   trials: number;
   seed: number;
   scenarios: string[];
+  fps: number[];
   timeoutMin: number;
   dump: string | null;
 }
 
 function parseArgs(argv: string[]): Args {
   const args: Args = {
-    size: 8 * 1024,
+    size: 64 * 1024,
     trials: 3,
     seed: 1,
     scenarios: ["lossless", "handheld"],
+    fps: [4, 8, 15, 30],
     timeoutMin: 5,
     dump: null,
   };
@@ -49,6 +51,9 @@ function parseArgs(argv: string[]): Args {
       case "--scenarios":
         args.scenarios = next().split(",");
         break;
+      case "--fps":
+        args.fps = next().split(",").map(Number);
+        break;
       case "--timeout-min":
         args.timeoutMin = Number(next());
         break;
@@ -59,7 +64,7 @@ function parseArgs(argv: string[]): Args {
         console.log(
           "options: --size <bytes> --trials <n> --seed <n> " +
             `--scenarios <${Object.keys(SCENARIOS).join("|")},...> ` +
-            "--timeout-min <n> --dump <dir>",
+            "--fps <n,n,...> --timeout-min <n> --dump <dir>",
         );
         process.exit(0);
         break;
@@ -86,9 +91,9 @@ function fmtBps(bps: number): string {
 }
 
 function printTable(rows: TrialSummary[]): void {
-  const header = ["strategy", "done", "median", "p10..p90", "goodput", "overhead", "scan hit"];
+  const header = ["sender", "done", "median", "p10..p90", "goodput", "overhead", "scan hit"];
   const cells = rows.map((r) => [
-    r.strategy,
+    r.sender,
     `${Math.round(r.completionRate * 100)}%`,
     fmtMs(r.medianMs),
     `${fmtMs(r.p10Ms)}..${fmtMs(r.p90Ms)}`,
@@ -103,33 +108,37 @@ function printTable(rows: TrialSummary[]): void {
   for (const row of cells) console.log(line(row));
 }
 
-/** Binary PGM (P5) — trivially viewable, no encoder dependency needed. */
-function writePgm(path: string, cap: Capture): void {
-  const header = Buffer.from(`P5\n${cap.width} ${cap.height}\n255\n`, "ascii");
-  const pixels = Buffer.alloc(cap.gray.length);
-  for (let i = 0; i < cap.gray.length; i++) {
-    pixels[i] = Math.max(0, Math.min(255, Math.round(cap.gray[i])));
+/** Binary PPM (P6) — trivially viewable color, no encoder dependency needed. */
+function writePpm(path: string, cap: Capture): void {
+  const header = Buffer.from(`P6\n${cap.width} ${cap.height}\n255\n`, "ascii");
+  const plane = cap.width * cap.height;
+  const pixels = Buffer.alloc(plane * 3);
+  for (let i = 0; i < plane; i++) {
+    for (let c = 0; c < 3; c++) {
+      pixels[i * 3 + c] = Math.max(0, Math.min(255, Math.round(cap.rgb[c * plane + i])));
+    }
   }
   writeFileSync(path, Buffer.concat([header, pixels]));
 }
 
 const args = parseArgs(process.argv.slice(2));
 const data = makeTestFile(args.size, args.seed);
-const strategies = defaultStrategies();
+const configs: SenderConfig[] = args.fps.map((fps) => ({ name: `sender @${fps}fps`, fps }));
+const core = await loadCore();
 
 if (args.dump) {
   const dir = args.dump;
   mkdirSync(dir, { recursive: true });
   const scenario = args.scenarios.find((s) => s !== "lossless") ?? "handheld";
   const camera = SCENARIOS[scenario] ?? bail(`unknown scenario "${scenario}"`);
-  console.log(`dumping captures for "${strategies[0].name}" on "${scenario}" to ${dir}/`);
+  console.log(`dumping captures for "${configs[0].name}" on "${scenario}" to ${dir}/`);
   let n = 0;
-  simulateTransfer(strategies[0], camera, data, args.seed, {
+  simulateTransfer(core, configs[0], camera, data, args.seed, {
     timeoutMs: 10_000,
-    onCapture: (cap, tMs, decoded) => {
+    onCapture: (cap, tMs, recognized) => {
       if (n >= 12) return;
-      const name = `t${String(Math.round(tMs)).padStart(5, "0")}ms-${decoded ? "ok" : "fail"}.pgm`;
-      writePgm(join(dir, name), cap);
+      const name = `t${String(Math.round(tMs)).padStart(5, "0")}ms-${recognized ? "ok" : "fail"}.ppm`;
+      writePpm(join(dir, name), cap);
       n++;
     },
   });
@@ -138,7 +147,8 @@ if (args.dump) {
 }
 
 console.log(
-  `file: ${args.size} B · trials: ${args.trials} · seed: ${args.seed} · timeout: ${args.timeoutMin} min\n`,
+  `codec: packit-core ${core.version()} · file: ${args.size} B · trials: ${args.trials} · ` +
+    `seed: ${args.seed} · timeout: ${args.timeoutMin} min\n`,
 );
 
 for (const name of args.scenarios) {
@@ -146,8 +156,8 @@ for (const name of args.scenarios) {
     SCENARIOS[name] ?? bail(`unknown scenario "${name}" (have: ${Object.keys(SCENARIOS).join(", ")})`);
   console.log(`━━━ scenario: ${name} ━━━`);
   const rows: TrialSummary[] = [];
-  for (const s of strategies) {
-    rows.push(runTrials(s, camera, data, args.trials, args.seed, args.timeoutMin * 60 * 1000));
+  for (const c of configs) {
+    rows.push(runTrials(core, c, camera, data, args.trials, args.seed, args.timeoutMin * 60 * 1000));
   }
   rows.sort((a, b) => (b.medianGoodputBps || 0) - (a.medianGoodputBps || 0));
   printTable(rows);

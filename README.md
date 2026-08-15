@@ -28,8 +28,8 @@ fall below Nyquist under ~0.8× scale) — hold the phone close.
 ```sh
 npm install
 npm run dev     # HTTPS dev server (self-signed) so phones on the LAN can use the camera
-npm test        # wasm codec smoke tests + fountain code / simulator unit tests
-npm run sim     # camera-in-the-loop simulator: compare bandwidth strategies (see src/sim/README.md)
+npm test        # wasm codec smoke tests + simulator tests
+npm run sim     # camera-in-the-loop simulator over the wasm codec (see src/sim/README.md)
 npm run build   # builds the wasm codec, type-checks, and bundles to dist/
 npm run icons   # regenerate PWA icons (no image deps — hand-rolled PNG writer)
 ```

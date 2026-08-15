@@ -1,15 +1,15 @@
-import jsQR from "jsqr";
-import { renderFrameImage, type TrialGeometry } from "./render";
+import { projectFrame, type TrialGeometry } from "./render";
 
 /**
  * Imperfect-camera model. Each scan attempt synthesizes the image a camera
  * would capture at that instant — integrating the display over the exposure
  * window (so exposures straddling a sender frame change produce ghosted
- * blends of two codes), with rolling-shutter row skew, LCD pixel-response
+ * blends of two frames), with rolling-shutter row skew, LCD pixel-response
  * smearing, hand-shake motion blur, defocus (plus autofocus hunting
- * episodes), sensor noise, and glare-washed contrast — then hands the pixels
- * to jsQR, the production fallback decoder. Whether a frame is readable is
- * decided by a real decoder on real pixels, not a probability curve.
+ * episodes), sensor noise, and glare-washed contrast. The pipeline runs per
+ * RGB channel because the tile codec classifies tile *colors*; whether a
+ * capture is readable is decided by the production wasm decoder on these
+ * pixels, not a probability curve.
  */
 export interface CameraParams {
   name: string;
@@ -17,8 +17,8 @@ export interface CameraParams {
   lossless?: boolean;
   /** Sensor crop resolution (square). */
   camPx: number;
-  /** Fraction of the sensor width the QR spans (framing distance). */
-  qrFraction: number;
+  /** Fraction of the sensor width the 1024px frame spans (framing distance). */
+  frameFraction: number;
   /** Mean wall-clock per scan attempt (capture + decode latency), ms. */
   scanIntervalMs: number;
   /** Uniform jitter on the scan interval, as a fraction. */
@@ -46,13 +46,20 @@ export interface CameraParams {
   contrast: number;
 }
 
+/**
+ * Scenario calibration is anchored to the decoder's real limits: the tile
+ * codec needs the frame to span >= ~820 camera pixels (a 2px glyph block
+ * needs ~1.6 sensor pixels — see the `downscale_limit` codec test), so the
+ * sensor crops sit at 1024-1280px with the frame filling most of the view,
+ * matching the app's 1280px scan resolution.
+ */
 export const SCENARIOS: Record<string, CameraParams> = {
-  /** No optics at all — isolates a strategy's coding overhead. */
+  /** No optics at all — isolates the codec's pure coding overhead. */
   lossless: {
     name: "lossless",
     lossless: true,
     camPx: 0,
-    qrFraction: 0,
+    frameFraction: 0,
     scanIntervalMs: 0,
     scanJitter: 0,
     exposureMs: 0,
@@ -70,36 +77,36 @@ export const SCENARIOS: Record<string, CameraParams> = {
   /** Phone on a tripod, good light, fast sensor. */
   steady: {
     name: "steady",
-    camPx: 640,
-    qrFraction: 0.8,
-    scanIntervalMs: 60,
+    camPx: 1280,
+    frameFraction: 0.8,
+    scanIntervalMs: 80,
     scanJitter: 0.2,
     exposureMs: 6,
     readoutMs: 8,
     screenResponseMs: 6,
     shakePxPerSec: 25,
     maxTiltDeg: 2,
-    defocusSigma: 0.7,
-    focusHuntSigma: 2.5,
+    defocusSigma: 0.5,
+    focusHuntSigma: 2.0,
     focusHuntEnter: 0.003,
     focusHuntExit: 0.4,
-    noiseSigma: 3,
-    contrast: 0.95,
+    noiseSigma: 4,
+    contrast: 0.9,
   },
   /** Handheld mid-range phone at a laptop screen — the default. */
   handheld: {
     name: "handheld",
-    camPx: 560,
-    qrFraction: 0.75,
-    scanIntervalMs: 90,
+    camPx: 1152,
+    frameFraction: 0.8,
+    scanIntervalMs: 110,
     scanJitter: 0.35,
     exposureMs: 12,
     readoutMs: 12,
     screenResponseMs: 8,
     shakePxPerSec: 130,
     maxTiltDeg: 6,
-    defocusSigma: 1.0,
-    focusHuntSigma: 3.0,
+    defocusSigma: 0.6,
+    focusHuntSigma: 2.5,
     focusHuntEnter: 0.012,
     focusHuntExit: 0.3,
     noiseSigma: 5,
@@ -107,31 +114,31 @@ export const SCENARIOS: Record<string, CameraParams> = {
   },
   /**
    * Dim room: long exposure (more ghosting + motion blur), frequent AF
-   * hunting, noise near jsQR's binarizer cliff (which sits at σ ≈ 6 — the
-   * production decoder's real limit, so presets stay just below it).
+   * hunting, and the frame span sits just above the decoder's ~820px floor.
    */
   lowlight: {
     name: "lowlight",
-    camPx: 480,
-    qrFraction: 0.78,
-    scanIntervalMs: 140,
+    camPx: 1024,
+    frameFraction: 0.85,
+    scanIntervalMs: 160,
     scanJitter: 0.45,
     exposureMs: 24,
     readoutMs: 16,
     screenResponseMs: 10,
     shakePxPerSec: 140,
     maxTiltDeg: 8,
-    defocusSigma: 1.6,
-    focusHuntSigma: 3.5,
+    defocusSigma: 0.9,
+    focusHuntSigma: 3.0,
     focusHuntEnter: 0.03,
     focusHuntExit: 0.25,
-    noiseSigma: 5.5,
+    noiseSigma: 6,
     contrast: 0.75,
   },
 };
 
+/** Planar RGB float image: three camPx² planes (R, G, B). */
 export interface Capture {
-  gray: Float32Array;
+  rgb: Float32Array;
   width: number;
   height: number;
 }
@@ -149,7 +156,8 @@ export class CameraSim {
 
   constructor(
     private readonly p: CameraParams,
-    private readonly frameText: (frame: number) => string,
+    /** RGBA pixels (1024×1024×4) the sender displays during frame n. */
+    private readonly frameRgba: (frame: number) => Uint8Array,
     senderFps: number,
     private readonly rng: () => number,
   ) {
@@ -157,7 +165,7 @@ export class CameraSim {
     // Per-trial physical setup: how the user happens to hold the phone.
     this.geom = {
       camPx: p.camPx,
-      qrSpanPx: p.camPx * p.qrFraction * (0.95 + 0.1 * rng()),
+      spanPx: p.camPx * p.frameFraction * (0.95 + 0.1 * rng()),
       rotationRad: ((rng() * 2 - 1) * p.maxTiltDeg * Math.PI) / 180,
       white: 235,
       black: 25,
@@ -169,7 +177,8 @@ export class CameraSim {
   capture(tMs: number): Capture {
     const { p } = this;
     const n = p.camPx;
-    const img = new Float32Array(n * n);
+    const plane = n * n;
+    const img = new Float32Array(3 * plane);
 
     // Exposure integration, row by row (rolling shutter skews row timing).
     for (let y = 0; y < n; y++) {
@@ -178,7 +187,10 @@ export class CameraSim {
       const row = y * n;
       for (const { frame, w } of weights) {
         const src = this.frameImage(frame);
-        for (let x = 0; x < n; x++) img[row + x] += w * src[row + x];
+        for (let c = 0; c < 3; c++) {
+          const off = c * plane + row;
+          for (let x = 0; x < n; x++) img[off + x] += w * src[off + x];
+        }
       }
     }
 
@@ -186,7 +198,7 @@ export class CameraSim {
     const shake = p.shakePxPerSec * (0.4 + 1.2 * this.rng());
     const blurLen = (shake * p.exposureMs) / 1000;
     const angle = this.rng() * 2 * Math.PI;
-    motionBlur(img, n, n, blurLen, angle);
+    for (let c = 0; c < 3; c++) motionBlur(img.subarray(c * plane, (c + 1) * plane), n, n, blurLen, angle);
 
     // Defocus, with occasional autofocus-hunt episodes.
     if (this.focusHunting) {
@@ -196,36 +208,36 @@ export class CameraSim {
     }
     const sigma =
       p.defocusSigma * (0.75 + 0.5 * this.rng()) + (this.focusHunting ? p.focusHuntSigma : 0);
-    gaussianBlur(img, n, n, sigma);
+    for (let c = 0; c < 3; c++) gaussianBlur(img.subarray(c * plane, (c + 1) * plane), n, n, sigma);
 
-    // Sensor: glare-reduced contrast + shot/read noise.
+    // Sensor: glare-reduced contrast + shot/read noise (per channel, so
+    // noise perturbs color classification too, not just brightness).
     for (let i = 0; i < img.length; i++) {
       const noise = (this.rng() + this.rng() - 1) * p.noiseSigma * 2.45;
       img[i] = 128 + (img[i] - 128) * p.contrast + noise;
     }
-    return { gray: img, width: n, height: n };
+    return { rgb: img, width: n, height: n };
   }
 
-  /** One scan attempt: capture at time t, then run the production decoder. */
-  scan(tMs: number): { text: string | null; capture: Capture } {
-    const cap = this.capture(tMs);
-    const rgba = new Uint8ClampedArray(cap.width * cap.height * 4);
-    for (let i = 0; i < cap.gray.length; i++) {
-      const v = Math.max(0, Math.min(255, cap.gray[i]));
-      rgba[i * 4] = v;
-      rgba[i * 4 + 1] = v;
-      rgba[i * 4 + 2] = v;
+  /** One scan attempt: capture at time t, quantized for the wasm decoder. */
+  snap(tMs: number): { rgba: Uint8Array; capture: Capture } {
+    const capture = this.capture(tMs);
+    const plane = capture.width * capture.height;
+    const rgba = new Uint8Array(plane * 4);
+    for (let i = 0; i < plane; i++) {
+      rgba[i * 4] = clamp255(capture.rgb[i]);
+      rgba[i * 4 + 1] = clamp255(capture.rgb[plane + i]);
+      rgba[i * 4 + 2] = clamp255(capture.rgb[2 * plane + i]);
       rgba[i * 4 + 3] = 255;
     }
-    const code = jsQR(rgba, cap.width, cap.height, { inversionAttempts: "dontInvert" });
-    return { text: code?.data ?? null, capture: cap };
+    return { rgba, capture };
   }
 
   /**
    * Which sender frames contribute to a row exposed over
    * [rowT - exposureMs, rowT], and with what weight. Accounts for the LCD
    * pixel-response ramp: right after a frame change the screen still shows a
-   * blend of the outgoing and incoming code.
+   * blend of the outgoing and incoming frame.
    */
   private frameWeights(rowT: number): FrameWeight[] {
     const { exposureMs, screenResponseMs } = this.p;
@@ -253,14 +265,18 @@ export class CameraSim {
   private frameImage(frame: number): Uint8Array {
     const cached = this.frameCache.get(frame);
     if (cached) return cached;
-    const img = renderFrameImage(this.frameText(frame), this.geom);
+    const img = projectFrame(this.frameRgba(frame), this.geom);
     this.frameCache.set(frame, img);
-    if (this.frameCache.size > 12) {
+    if (this.frameCache.size > 6) {
       const oldest = this.frameCache.keys().next().value!;
       this.frameCache.delete(oldest);
     }
     return img;
   }
+}
+
+function clamp255(v: number): number {
+  return v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
 }
 
 /** In-place linear motion blur of the given length (px) and direction. */

@@ -1,67 +1,69 @@
-import QRCode from "qrcode";
-
 /**
- * Screen model: rasterizes the QR a sender frame displays into the camera's
- * image plane. The physical setup mirrors the real app — the sender canvas
- * has a fixed on-screen size (quiet zone included), so denser codes get
- * proportionally smaller modules; the camera sees the code spanning
- * `qrSpanPx` sensor pixels at a slight tilt, surrounded by the dark app UI.
+ * Screen model: projects the sender's rendered 1024x1024 RGBA frame into the
+ * camera's image plane. The physical setup mirrors the real app — the frame
+ * canvas has a fixed on-screen size, the camera sees it spanning `spanPx`
+ * sensor pixels at a slight tilt, surrounded by the dark app UI, on an LCD
+ * whose black isn't 0 and white isn't 255.
  *
- * Rendering is done directly in camera coordinates with 2×2 supersampling:
- * each camera pixel inverse-rotates into screen space and area-averages the
- * module grid, which reproduces the soft anti-aliased module edges a real
- * sensor sees at low pixels-per-module.
+ * Projection happens directly in camera coordinates with 2x2 supersampling:
+ * each camera pixel inverse-rotates into screen space and averages the
+ * source, reproducing the soft anti-aliased tile edges a real sensor sees
+ * when an 8px tile lands on ~6-8 camera pixels.
  */
 export interface TrialGeometry {
   /** Sensor crop is a camPx × camPx square. */
   camPx: number;
-  /** Camera pixels the QR spans, quiet zone included. */
-  qrSpanPx: number;
+  /** Camera pixels the 1024px frame spans. The decoder's floor is ~820. */
+  spanPx: number;
   /** Camera tilt relative to the screen, radians. */
   rotationRad: number;
-  /** Luminance of white / black modules and of the screen around the code. */
+  /** On-screen luminance of full-white / full-black, and of the UI around the frame. */
   white: number;
   black: number;
   bg: number;
 }
 
-/** Quiet-zone modules the sender renders (QRCode.toCanvas margin: 2). */
-const MARGIN = 2;
+export const FRAME_PX = 1024;
 
-export function renderFrameImage(text: string, geom: TrialGeometry): Uint8Array {
-  const qr = QRCode.create(text, { errorCorrectionLevel: "L" });
-  const size = qr.modules.size;
-  const bits = qr.modules.data;
-  const total = size + 2 * MARGIN;
-  const ppm = geom.qrSpanPx / total;
+/** Project one sender frame; returns planar RGB (3 × camPx² planes). */
+export function projectFrame(rgba: Uint8Array, geom: TrialGeometry): Uint8Array {
   const { camPx } = geom;
+  const scale = geom.spanPx / FRAME_PX;
   const cos = Math.cos(geom.rotationRad);
   const sin = Math.sin(geom.rotationRad);
   const half = camPx / 2;
-  const out = new Uint8Array(camPx * camPx);
-
-  const sample = (u: number, v: number): number => {
-    if (u < 0 || v < 0 || u >= total || v >= total) return geom.bg;
-    const mu = Math.floor(u) - MARGIN;
-    const mv = Math.floor(v) - MARGIN;
-    if (mu < 0 || mv < 0 || mu >= size || mv >= size) return geom.white; // quiet zone
-    return bits[mv * size + mu] ? geom.black : geom.white;
-  };
+  const gain = (geom.white - geom.black) / 255;
+  const n = camPx * camPx;
+  const out = new Uint8Array(3 * n);
 
   const offsets = [-0.25, 0.25];
   for (let y = 0; y < camPx; y++) {
     for (let x = 0; x < camPx; x++) {
-      let acc = 0;
+      let r = 0;
+      let g = 0;
+      let b = 0;
       for (const dy of offsets) {
         for (const dx of offsets) {
           const px = x + dx - half;
           const py = y + dy - half;
-          const sx = px * cos + py * sin;
-          const sy = -px * sin + py * cos;
-          acc += sample(sx / ppm + total / 2, sy / ppm + total / 2);
+          const sx = (px * cos + py * sin) / scale + FRAME_PX / 2;
+          const sy = (-px * sin + py * cos) / scale + FRAME_PX / 2;
+          if (sx < 0 || sy < 0 || sx >= FRAME_PX || sy >= FRAME_PX) {
+            r += geom.bg;
+            g += geom.bg;
+            b += geom.bg;
+          } else {
+            const o = ((sy | 0) * FRAME_PX + (sx | 0)) * 4;
+            r += geom.black + rgba[o] * gain;
+            g += geom.black + rgba[o + 1] * gain;
+            b += geom.black + rgba[o + 2] * gain;
+          }
         }
       }
-      out[y * camPx + x] = acc / 4;
+      const i = y * camPx + x;
+      out[i] = r / 4;
+      out[n + i] = g / 4;
+      out[2 * n + i] = b / 4;
     }
   }
   return out;
