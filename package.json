@@ -8,6 +8,7 @@
     "build": "npm run build:wasm && tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "sim": "vite-node src/sim/cli.ts",
     "icons": "node scripts/gen-icons.mjs",
     "build:wasm": "wasm-pack build crates/packit-core --target web --release --out-dir ../../src/wasm/pkg",
     "predev": "npm run build:wasm"
@@ -17,6 +18,7 @@
     "@vitejs/plugin-basic-ssl": "^1.2.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
+    "vite-node": "^2.1.9",
     "vite-plugin-pwa": "^0.21.1",
     "vitest": "^2.1.8",
     "wasm-pack": "^0.15.0"
