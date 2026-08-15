@@ -35,7 +35,7 @@ export default defineConfig({
         name: "Fountain Transfer",
         short_name: "Fountain",
         description:
-          "Air-gapped file transfer between machines via camera and QR codes, powered by fountain codes.",
+          "Air-gapped file transfer between machines via screen and camera, powered by fountain codes.",
         theme_color: "#0b1020",
         background_color: "#0b1020",
         display: "standalone",

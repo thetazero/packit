@@ -141,7 +141,7 @@ input[type="range"] {
   padding: 0.3rem;
 }
 
-.qr-wrap,
+.frame-wrap,
 .cam-wrap {
   display: flex;
   flex-direction: column;
@@ -150,7 +150,7 @@ input[type="range"] {
   width: 100%;
 }
 
-#qr-canvas {
+#frame-canvas {
   border-radius: 8px;
   image-rendering: pixelated;
   background: #fff;

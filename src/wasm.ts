@@ -1,6 +1,5 @@
-// Lazy loader for the packit-core wasm module. The QR transport must keep
-// working even when wasm fails to load (old browsers, blocked fetch), so
-// consumers treat a null core as "tile mode unavailable".
+// Lazy loader for the packit-core wasm module. Consumers treat a null core
+// as "codec unavailable" (old browsers, blocked fetch) and surface an error.
 import type { TileReceiver, TileSender } from "./wasm/pkg/packit_core";
 
 export interface Core {
