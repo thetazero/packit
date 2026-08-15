@@ -17,7 +17,7 @@ export function initReceiver(root: HTMLElement): void {
       <div class="cam-wrap hidden" id="cam-wrap">
         <video id="cam" playsinline muted></video>
         <div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
-        <div class="stats" id="recv-stats">Point the camera at the sender's frame stream.</div>
+        <div class="stats" id="recv-stats">Point the camera at the code and hold close — it should fill most of the view.</div>
         <button id="stop-cam" class="secondary">Stop camera</button>
       </div>
       <div class="result hidden" id="result"></div>
@@ -101,7 +101,11 @@ export function initReceiver(root: HTMLElement): void {
 
   async function scanLoop(): Promise<void> {
     while (scanning) {
-      const img = grabFrame(1280);
+      // The code must span >= ~820 camera pixels to decode; never downscale
+      // below the camera's native resolution (the old 1280 cap made a
+      // landscape 1080p frame 1280x720 — a square code could never fit the
+      // 820px floor). 2560 only bounds cost on 4K cameras.
+      const img = grabFrame(2560);
       if (img) processFrame(img);
       await new Promise((r) => requestAnimationFrame(r));
     }
@@ -110,7 +114,7 @@ export function initReceiver(root: HTMLElement): void {
   async function startCamera(): Promise<void> {
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: { facingMode: "environment", width: { ideal: 2560 }, height: { ideal: 1440 } },
         audio: false,
       });
     } catch (err) {

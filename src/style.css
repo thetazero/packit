@@ -150,12 +150,15 @@ input[type="range"] {
   width: 100%;
 }
 
+/* Sized 1:1 to device pixels by JS; break out of the 640px column so the
+   layout never rescales (and thereby destroys) the glyph grid. */
 #frame-canvas {
-  border-radius: 8px;
   image-rendering: pixelated;
   background: #fff;
-  max-width: 100%;
-  height: auto;
+  max-width: none;
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 video {
@@ -170,6 +173,10 @@ video {
   font-size: 0.85rem;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+.stats.warn {
+  color: #f0b429;
 }
 
 .progress {

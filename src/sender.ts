@@ -24,6 +24,7 @@ export function initSender(root: HTMLElement): void {
       </div>
       <div class="frame-wrap hidden" id="frame-wrap">
         <canvas id="frame-canvas"></canvas>
+        <div class="stats warn hidden" id="send-hint"></div>
         <div class="stats" id="send-stats"></div>
         <button id="stop-send" class="secondary">Stop</button>
       </div>
@@ -37,6 +38,7 @@ export function initSender(root: HTMLElement): void {
   const fpsLabel = root.querySelector<HTMLElement>("#fps-label")!;
   const frameWrap = root.querySelector<HTMLElement>("#frame-wrap")!;
   const canvas = root.querySelector<HTMLCanvasElement>("#frame-canvas")!;
+  const hint = root.querySelector<HTMLElement>("#send-hint")!;
   const stats = root.querySelector<HTMLElement>("#send-stats")!;
   const stopBtn = root.querySelector<HTMLButtonElement>("#stop-send")!;
 
@@ -70,8 +72,6 @@ export function initSender(root: HTMLElement): void {
     const pixels = new Uint8ClampedArray(rgba.length) as ImageDataArray;
     pixels.set(rgba);
     const img = new ImageData(pixels, 1024, 1024);
-    canvas.width = 1024;
-    canvas.height = 1024;
     canvas.getContext("2d")!.putImageData(img, 0, 0);
     const elapsed = (performance.now() - s.startedAt) / 1000;
     const cap = s.sender.payload_capacity();
@@ -96,6 +96,7 @@ export function initSender(root: HTMLElement): void {
     }
     dropLabel.textContent = `${file.name} (${formatBytes(data.length)})`;
     frameWrap.classList.remove("hidden");
+    sizeCanvas();
     session = {
       sender: new core.TileSender(data, file.name, file.type || "application/octet-stream"),
       frame: 0,
@@ -108,6 +109,26 @@ export function initSender(root: HTMLElement): void {
   function restart(): void {
     if (fileInput.files?.[0]) void start(fileInput.files[0]);
   }
+
+  // The code's 2x2-px glyph blocks survive only if the canvas is shown at
+  // exactly 1024 device pixels — any browser rescale aliases them away.
+  function sizeCanvas(): void {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = 1024;
+    canvas.height = 1024;
+    canvas.style.width = `${1024 / dpr}px`;
+    canvas.style.height = `${1024 / dpr}px`;
+    const cramped = window.innerWidth * dpr < 1024 || window.innerHeight * dpr < 1024;
+    hint.classList.toggle("hidden", !cramped);
+    if (cramped) {
+      hint.textContent =
+        "⚠ Screen too small to show the code sharply — the receiver may not sync. " +
+        "Zoom the page out (Ctrl/Cmd −) or use a larger display.";
+    }
+  }
+  window.addEventListener("resize", () => {
+    if (session) sizeCanvas();
+  });
 
   fpsInput.addEventListener("input", () => {
     fpsLabel.textContent = fpsInput.value;
