@@ -1,0 +1,25 @@
+#!/bin/sh
+# Block pushes to main that don't bump the version.
+# Enable with: git config core.hooksPath .githooks
+zero=0000000000000000000000000000000000000000
+
+while read -r _local_ref local_sha remote_ref remote_sha; do
+    [ "$remote_ref" = "refs/heads/main" ] || continue
+    [ "$local_sha" = "$zero" ] && continue # branch deletion
+
+    new=$(git show "$local_sha:package.json" | grep -m1 '"version"' | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+    crate=$(git show "$local_sha:crates/packit-core/Cargo.toml" | grep -m1 '^version' | sed 's/.*"\([^"]*\)".*/\1/')
+    if [ "$new" != "$crate" ]; then
+        echo "pre-push: package.json ($new) and packit-core Cargo.toml ($crate) versions differ — sync them." >&2
+        exit 1
+    fi
+
+    # New remote branch: nothing to compare against.
+    [ "$remote_sha" = "$zero" ] && continue
+    old=$(git show "$remote_sha:package.json" 2>/dev/null | grep -m1 '"version"' | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+    if [ -n "$old" ] && [ "$new" = "$old" ]; then
+        echo "pre-push: version $new is unchanged from origin/main — bump package.json and crates/packit-core/Cargo.toml first." >&2
+        exit 1
+    fi
+done
+exit 0

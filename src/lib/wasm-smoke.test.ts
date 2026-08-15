@@ -9,7 +9,12 @@ describe.skipIf(!built)("packit-core wasm", () => {
   it("loads and reports its version", async () => {
     const mod = await import(/* @vite-ignore */ pkgDir + "packit_core.js");
     await mod.default({ module_or_path: readFileSync(pkgDir + "packit_core_bg.wasm") });
-    expect(mod.version()).toBe("0.4.0");
+    // The wasm crate version must track package.json (the pre-push hook
+    // enforces the same on Cargo.toml; this catches a stale wasm build).
+    const pkg = JSON.parse(
+      readFileSync(fileURLToPath(new URL("../../package.json", import.meta.url)), "utf8"),
+    ) as { version: string };
+    expect(mod.version()).toBe(pkg.version);
     expect(mod.frame_capacity()).toBe(9632);
   });
 

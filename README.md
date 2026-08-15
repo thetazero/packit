@@ -27,6 +27,7 @@ fall below Nyquist under ~0.8× scale) — hold the phone close.
 
 ```sh
 npm install
+git config core.hooksPath .githooks   # pre-push hook: refuses pushes to main without a version bump
 npm run dev     # HTTPS dev server (self-signed) so phones on the LAN can use the camera
 npm test        # wasm codec smoke tests
 npm run build   # builds the wasm codec, type-checks, and bundles to dist/
